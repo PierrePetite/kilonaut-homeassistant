@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Kilonaut",
+        "description": "Paste your personal Kilonaut API token. You can create one in Kilonaut under Settings → API & Home Assistant.",
+        "data": {
+          "api_token": "API token",
+          "api_base": "API base URL"
+        }
+      },
+      "entities": {
+        "title": "Choose your wallbox sensors",
+        "description": "Pick the sensors that measure your wallbox. Kilonaut detects a charge from the power draw and calculates the energy from the counter.",
+        "data": {
+          "power_entity": "Power sensor (W)",
+          "energy_entity": "Energy sensor (kWh, cumulative)",
+          "odometer_entity": "Odometer sensor (km, optional)",
+          "charging_threshold_w": "Charging threshold",
+          "location_type": "Location type"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach Kilonaut. Check your internet connection.",
+      "invalid_auth": "That API token was rejected. Copy it again from Kilonaut."
+    },
+    "abort": {
+      "already_configured": "This Kilonaut account is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kilonaut settings",
+        "data": {
+          "power_entity": "Power sensor (W)",
+          "energy_entity": "Energy sensor (kWh, cumulative)",
+          "odometer_entity": "Odometer sensor (km, optional)",
+          "charging_threshold_w": "Charging threshold",
+          "location_type": "Location type"
+        }
+      }
+    }
+  },
+  "selector": {
+    "location_type": {
+      "options": {
+        "home": "Home",
+        "public": "Public",
+        "work": "Work",
+        "other": "Other"
+      }
+    }
+  }
+}

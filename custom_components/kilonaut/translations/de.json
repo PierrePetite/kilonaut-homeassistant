@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit Kilonaut verbinden",
+        "description": "Füge deinen persönlichen Kilonaut-API-Token ein. Du erstellst ihn in Kilonaut unter Einstellungen → API & Home Assistant.",
+        "data": {
+          "api_token": "API-Token",
+          "api_base": "API-Basis-URL"
+        }
+      },
+      "entities": {
+        "title": "Wallbox-Sensoren auswählen",
+        "description": "Wähle die Sensoren, die deine Wallbox messen. Kilonaut erkennt eine Ladung an der Leistung und berechnet die Energie aus dem Zähler.",
+        "data": {
+          "power_entity": "Leistungs-Sensor (W)",
+          "energy_entity": "Energie-Sensor (kWh, kumulativ)",
+          "odometer_entity": "Kilometerstand-Sensor (km, optional)",
+          "charging_threshold_w": "Lade-Schwelle",
+          "location_type": "Standort-Typ"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kilonaut ist nicht erreichbar. Prüfe deine Internetverbindung.",
+      "invalid_auth": "Der API-Token wurde abgelehnt. Kopiere ihn erneut aus Kilonaut."
+    },
+    "abort": {
+      "already_configured": "Dieses Kilonaut-Konto ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kilonaut-Einstellungen",
+        "data": {
+          "power_entity": "Leistungs-Sensor (W)",
+          "energy_entity": "Energie-Sensor (kWh, kumulativ)",
+          "odometer_entity": "Kilometerstand-Sensor (km, optional)",
+          "charging_threshold_w": "Lade-Schwelle",
+          "location_type": "Standort-Typ"
+        }
+      }
+    }
+  },
+  "selector": {
+    "location_type": {
+      "options": {
+        "home": "Zuhause",
+        "public": "Öffentlich",
+        "work": "Arbeit",
+        "other": "Sonstige"
+      }
+    }
+  }
+}
