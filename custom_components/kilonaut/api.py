@@ -18,11 +18,26 @@ REQUEST_TIMEOUT = 15
 
 
 class KilonautApiError(Exception):
-    """Raised when the Kilonaut API returns an error or is unreachable."""
+    """Raised when the Kilonaut API returns an error or is unreachable.
+
+    `status` is the HTTP status, or None when the server was not reached at all.
+    """
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+    @property
+    def retryable(self) -> bool:
+        """Whether the same request can succeed later (see pending.is_retryable)."""
+        return self.status is None or self.status >= 500 or self.status in (401, 408, 429)
 
 
 class KilonautAuthError(KilonautApiError):
     """Raised when the token is rejected (401)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status=401)
 
 
 class KilonautApiClient:
@@ -55,7 +70,7 @@ class KilonautApiClient:
                     if resp.status == 401:
                         raise KilonautAuthError("Kilonaut rejected the API token (401).")
                     if resp.status >= 400:
-                        raise KilonautApiError(f"Kilonaut API {resp.status}: {body[:200]}")
+                        raise KilonautApiError(f"Kilonaut API {resp.status}: {body[:200]}", status=resp.status)
                     try:
                         return await resp.json()
                     except aiohttp.ContentTypeError:

@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import KilonautApiClient
 from .const import CONF_API_BASE, CONF_API_TOKEN, DEFAULT_API_BASE
-from .coordinator import KilonautChargeManager
+from .coordinator import KilonautChargeManager, pending_store
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: KilonautConfigEntry) -> 
 
     # Options (entities/threshold) may be edited later; fall back to entry data.
     options = {**entry.data, **entry.options}
-    manager = KilonautChargeManager(hass, client, options)
+    manager = KilonautChargeManager(hass, client, options, entry.entry_id)
     await manager.async_start()
 
     entry.runtime_data = manager
@@ -51,3 +51,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: KilonautConfigEntry) ->
 async def _async_reload_on_update(hass: HomeAssistant, entry: KilonautConfigEntry) -> None:
     """Reload when the user changes options (entities, threshold, …)."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: KilonautConfigEntry) -> None:
+    """Forget undelivered charges when the integration is removed for good."""
+    await pending_store(hass, entry.entry_id).async_remove()

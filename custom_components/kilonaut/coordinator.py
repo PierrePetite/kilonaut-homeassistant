@@ -3,6 +3,10 @@
 Watches the configured power sensor, detects charge start/stop from the power
 draw, computes the session energy as the delta of the cumulative energy counter,
 and pushes everything to Kilonaut's REST API. Optionally pushes the odometer.
+
+A finished charge is queued on disk before it is sent and removed only once
+Kilonaut accepted it (see pending.py), so a charge that ends while the server is
+unreachable is delivered later instead of lost.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .api import KilonautApiClient, KilonautApiError
@@ -26,22 +31,37 @@ from .const import (
     CONF_THRESHOLD_W,
     DEFAULT_LOCATION_TYPE,
     DEFAULT_THRESHOLD_W,
+    DOMAIN,
     HEARTBEAT_INTERVAL_S,
     MIN_SESSION_KWH,
     ODOMETER_INTERVAL_H,
+    RETRY_INTERVAL_MIN,
 )
+from .pending import PendingSessions
 
 _LOGGER = logging.getLogger(__name__)
 
 _UNAVAILABLE = (None, "", "unknown", "unavailable")
 
+STORAGE_VERSION = 1
+
+
+def pending_store(hass: HomeAssistant, entry_id: str) -> Store:
+    """Where one config entry keeps its undelivered charges (.storage/kilonaut.pending.<id>)."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.pending.{entry_id}")
+
 
 class KilonautChargeManager:
     """Turns wallbox power/energy readings into Kilonaut sessions."""
 
-    def __init__(self, hass: HomeAssistant, client: KilonautApiClient, options: dict) -> None:
+    def __init__(self, hass: HomeAssistant, client: KilonautApiClient, options: dict, entry_id: str) -> None:
         self.hass = hass
         self.client = client
+        store = pending_store(hass, entry_id)
+        self._pending = PendingSessions(
+            load=store.async_load,
+            save=store.async_save,
+        )
         self._power_entity: str = options[CONF_POWER_ENTITY]
         self._energy_entity: str = options[CONF_ENERGY_ENTITY]
         self._odometer_entity: str | None = options.get(CONF_ODOMETER_ENTITY) or None
@@ -55,12 +75,19 @@ class KilonautChargeManager:
         self._unsub_state = None
         self._unsub_heartbeat = None
         self._unsub_odometer = None
+        self._unsub_retry = None
 
     async def async_start(self) -> None:
-        """Begin watching the power sensor."""
+        """Begin watching the power sensor, and send anything left from before."""
+        await self._pending.async_load()
         self._unsub_state = async_track_state_change_event(
             self.hass, [self._power_entity], self._handle_power_event
         )
+        self._unsub_retry = async_track_time_interval(
+            self.hass, self._retry_pending, timedelta(minutes=RETRY_INTERVAL_MIN)
+        )
+        if len(self._pending):
+            self.hass.async_create_task(self._retry_pending())
         if self._odometer_entity:
             # Push the odometer regularly; the server dedups per day, so an
             # occasional extra push is harmless.
@@ -71,10 +98,10 @@ class KilonautChargeManager:
     @callback
     def async_stop(self) -> None:
         """Tear down all listeners."""
-        for unsub in (self._unsub_state, self._unsub_heartbeat, self._unsub_odometer):
+        for unsub in (self._unsub_state, self._unsub_heartbeat, self._unsub_odometer, self._unsub_retry):
             if unsub:
                 unsub()
-        self._unsub_state = self._unsub_heartbeat = self._unsub_odometer = None
+        self._unsub_state = self._unsub_heartbeat = self._unsub_odometer = self._unsub_retry = None
 
     # --- power handling -----------------------------------------------------
 
@@ -120,20 +147,42 @@ class KilonautChargeManager:
             _LOGGER.debug("Kilonaut: charge ended, but delta too small (%s) — skipped", kwh)
             return
 
-        try:
-            await self.client.push_session(
-                started_at=self._started_at.isoformat(),
-                ended_at=ended_at.isoformat(),
-                energy_kwh=kwh,
-                location_type=self._location_type,
-                charge_type="ac",
-                idempotency_key=f"ha-{int(self._started_at.timestamp())}",
-            )
-            _LOGGER.info("Kilonaut: session pushed (%.3f kWh)", kwh)
-        except KilonautApiError as err:
-            _LOGGER.error("Kilonaut: failed to push session: %s", err)
+        # Written to disk first, sent second: a charge that fails to send — or a Home
+        # Assistant that restarts mid-request — is retried instead of lost.
+        await self._pending.add({
+            "started_at": self._started_at.isoformat(),
+            "ended_at": ended_at.isoformat(),
+            "energy_kwh": kwh,
+            "location_type": self._location_type,
+            "charge_type": "ac",
+            "idempotency_key": f"ha-{int(self._started_at.timestamp())}",
+        })
+        await self._retry_pending()
 
         await self._push_odometer()
+
+    async def _retry_pending(self, _now=None) -> None:
+        """Send queued charges. Called after each charge and every few minutes."""
+        if not len(self._pending):
+            return
+        result = await self._pending.flush(self._send_session)
+        if result.sent:
+            _LOGGER.info("Kilonaut: %d charge(s) delivered", result.sent)
+        if result.remaining:
+            _LOGGER.warning(
+                "Kilonaut: %d charge(s) not delivered yet, retrying every %d min",
+                result.remaining, RETRY_INTERVAL_MIN,
+            )
+
+    async def _send_session(self, payload: dict) -> None:
+        await self.client.push_session(
+            started_at=payload["started_at"],
+            ended_at=payload["ended_at"],
+            energy_kwh=payload["energy_kwh"],
+            location_type=payload.get("location_type", self._location_type),
+            charge_type=payload.get("charge_type", "ac"),
+            idempotency_key=payload["idempotency_key"],
+        )
 
     async def _send_status(self, charging: bool, power_w: float, delta_kwh: float | None = None) -> None:
         try:

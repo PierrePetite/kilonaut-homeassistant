@@ -23,5 +23,6 @@ DEFAULT_LOCATION_TYPE = "home"
 HEARTBEAT_INTERVAL_S = 120  # live "charging now" update cadence
 ODOMETER_INTERVAL_H = 24    # how often a configured odometer is pushed
 MIN_SESSION_KWH = 0.1       # ignore charges smaller than this
+RETRY_INTERVAL_MIN = 5      # how often undelivered charges are sent again
 
 LOCATION_TYPES = ["home", "public", "work", "other"]
