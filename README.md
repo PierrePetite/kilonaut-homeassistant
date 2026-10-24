@@ -58,7 +58,8 @@ You can change any of these later under the integration's **Configure** button.
 The integration runs **entirely on your Home Assistant** and only calls Kilonaut's public REST API over HTTPS:
 
 - While power is above the threshold, it sends a live heartbeat every couple of minutes (`POST /charging/status`) so Kilonaut shows the "charging now" tile and power curve.
-- When power drops back below the threshold, it posts the finished session (`POST /sessions`) with the exact kWh (energy‑counter delta) and duration.
+- When power stays below the threshold for 5 minutes, it posts the finished session (`POST /sessions`) with the exact kWh (energy‑counter delta) and duration. A shorter pause — opening the car, cell balancing, a brief dip — continues the same charge instead of splitting it.
+- **Robust against flaky meters.** The energy counter is followed continuously, so a charge that starts while the meter is briefly unavailable (common with Shelly devices reconnecting to Wi‑Fi) still gets its exact kWh.
 - **No charge is lost when Kilonaut is unreachable.** A finished session is saved on your Home Assistant before it is sent, and retried every 5 minutes (and after a restart) until Kilonaut accepts it — for up to 30 days. Retries are idempotent, so a session is never duplicated.
 - If an odometer sensor is configured, its reading is pushed periodically and at the end of each charge (`POST /odometer`).
 
@@ -69,6 +70,7 @@ Your token is stored by Home Assistant and sent only to `kilonaut.de`. No chargi
 - **Nothing shows up:** confirm the power sensor reports Watts and rises above the threshold while charging, and that the energy sensor is a *cumulative* counter in kWh.
 - **Wrong device fields (Shelly):** make sure you selected the *power* and *energy* entities, not a switch state. See the [Shelly guide](https://kilonaut.de/hilfe/shelly).
 - **Token rejected:** create a fresh token in Kilonaut → Settings → API & Home Assistant.
+- **"ended without a reading" in the log:** the energy sensor was unavailable for the whole charge. Check that it reports a cumulative kWh value.
 - **"charge(s) not delivered yet" in the log:** Kilonaut was unreachable or the token was rejected. Nothing to do if it was an outage; after a new token, waiting charges are sent on the next retry.
 - Enable debug logs by adding to `configuration.yaml`:
   ```yaml
